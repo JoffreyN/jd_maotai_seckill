@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 from jd_logger import logger
 from config import global_config
+from util import get_random_useragent
 
 
 class Timer(object):
@@ -13,12 +14,12 @@ class Timer(object):
         # '2018-09-28 22:45:50.000'
         # buy_time = 2020-12-22 09:59:59.500
         buy_time_everyday = global_config.getRaw('config', 'buy_time').__str__()
+        reserve_time_everyday = global_config.getRaw('config', 'reserve_time').__str__()
         localtime = time.localtime(time.time())
-        self.buy_time = datetime.strptime(
-            localtime.tm_year.__str__() + '-' + localtime.tm_mon.__str__() + '-' + localtime.tm_mday.__str__()
-            + ' ' + buy_time_everyday,
-            "%Y-%m-%d %H:%M:%S.%f")
+        self.buy_time = datetime.strptime(localtime.tm_year.__str__() + '-' + localtime.tm_mon.__str__() + '-' + localtime.tm_mday.__str__()+ ' ' + buy_time_everyday,"%Y-%m-%d %H:%M:%S.%f")
+        self.reserve_time = datetime.strptime(localtime.tm_year.__str__() + '-' + localtime.tm_mon.__str__() + '-' + localtime.tm_mday.__str__()+ ' ' + reserve_time_everyday,"%Y-%m-%d %H:%M:%S.%f")
         self.buy_time_ms = int(time.mktime(self.buy_time.timetuple()) * 1000.0 + self.buy_time.microsecond / 1000)
+        self.reserve_time_ms = int(time.mktime(self.reserve_time.timetuple()) * 1000.0 + self.reserve_time.microsecond / 1000)
         self.sleep_interval = sleep_interval
 
         self.diff_time = self.local_jd_time_diff()
@@ -28,10 +29,14 @@ class Timer(object):
         从京东服务器获取时间毫秒
         :return:
         """
-        url = 'https://a.jd.com//ajax/queryServerData.html'
-        ret = requests.get(url).text
+        url = 'https://api.m.jd.com/client.action?functionId=queryMaterialProducts&client=wh5'
+        head={
+            'user-agent':get_random_useragent()
+        }
+        ret = requests.get(url,headers=head).text
         js = json.loads(ret)
-        return int(js["serverTime"])
+        print('debug:',js)
+        return int(js["currentTime2"])
 
     def local_time(self):
         """
@@ -47,12 +52,18 @@ class Timer(object):
         """
         return self.local_time() - self.jd_time()
 
-    def start(self):
-        logger.info('正在等待到达设定时间:{}，检测本地时间与京东服务器时间误差为【{}】毫秒'.format(self.buy_time, self.diff_time))
+    def start(self,choice_function):
+        if choice_function=='1':
+            self.watch_time=self.reserve_time
+            self.watch_time_ms=self.reserve_time_ms
+        elif choice_function=='2':
+            self.watch_time=self.buy_time
+            self.watch_time_ms=self.buy_time_ms
+        logger.info('正在等待到达设定时间:{}，检测本地时间与京东服务器时间误差为【{}】毫秒'.format(self.watch_time, self.diff_time))
         while True:
             # 本地时间减去与京东的时间差，能够将时间误差提升到0.1秒附近
             # 具体精度依赖获取京东服务器时间的网络时间损耗
-            if self.local_time() - self.diff_time >= self.buy_time_ms:
+            if self.local_time() - self.diff_time >= self.watch_time_ms:
                 logger.info('时间到达，开始执行……')
                 break
             else:
